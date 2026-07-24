@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabaseClient';
-import Login from './components/Login';
+import Login from './components/login';
 import ModalNovoDocumento from './components/ModalNovoDocumento';
 import ModalNovoSetor from './components/ModalNovoSetor';
 import ModalEditarSetor from './components/ModalEditarSetor';
