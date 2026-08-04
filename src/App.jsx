@@ -7,7 +7,7 @@ import ModalEditarSetor from './components/ModalEditarSetor';
 import { 
   Folder, FolderOpen, ChevronRight, ChevronDown, 
   FileText, Search, Lock, Download, Bell, LogOut, Plus, Edit2, Trash2, Eye, FileSpreadsheet,
-  Megaphone, Calendar, AlertTriangle, X, Maximize2
+  Megaphone, Calendar, AlertTriangle, X, Maximize2, ShieldCheck, UserCheck, Key
 } from 'lucide-react';
 
 export default function App() {
@@ -22,9 +22,16 @@ export default function App() {
   // Controle de Abas: 'documentos' ou 'avisos'
   const [abaAtiva, setAbaAtiva] = useState('documentos');
 
-  const [telaAtual, setTelaAtual] = useState('portal');
-  const [usuario, setUsuario] = useState(null);
-  
+  // Controle de Autenticação e Perfis
+  const [autenticado, setAutenticado] = useState(false); // Bloqueia acesso sem login
+  const [perfilAcesso, setPerfilAcesso] = useState('leitor'); // 'leitor' ou 'admin'
+  const [usuarioAdmin, setUsuarioAdmin] = useState(null);
+  const [telaLoginAdmin, setTelaLoginAdmin] = useState(false);
+
+  // Form de Login do Leitor Geral
+  const [senhaLeitor, setSenhaLeitor] = useState('');
+  const [erroLoginLeitor, setErroLoginLeitor] = useState('');
+
   // Modais
   const [modalDocAberto, setModalDocAberto] = useState(false);
   const [modalSetorAberto, setModalSetorAberto] = useState(false);
@@ -45,12 +52,25 @@ export default function App() {
     carregarDocumentos();
     carregarAvisos();
 
+    // Verifica sessão prévia de Administrador via Supabase
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUsuario(session?.user ?? null);
+      if (session?.user) {
+        setUsuarioAdmin(session.user);
+        setPerfilAcesso('admin');
+        setAutenticado(true);
+      }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUsuario(session?.user ?? null);
+      if (session?.user) {
+        setUsuarioAdmin(session.user);
+        setPerfilAcesso('admin');
+        setAutenticado(true);
+      } else if (perfilAcesso === 'admin') {
+        setUsuarioAdmin(null);
+        setPerfilAcesso('leitor');
+        setAutenticado(false);
+      }
     });
 
     return () => authListener.subscription.unsubscribe();
@@ -71,8 +91,28 @@ export default function App() {
     if (data) setAvisos(data);
   }
 
+  // Validação do Login do Usuário Geral (Leitura)
+  function handleLoginLeitor(e) {
+    e.preventDefault();
+    const SENHA_CORRETA_LEITOR = "saude2026"; // Altere aqui a senha padrão se desejar
+
+    if (senhaLeitor === SENHA_CORRETA_LEITOR) {
+      setAutenticado(true);
+      setPerfilAcesso('leitor');
+      setErroLoginLeitor('');
+    } else {
+      setErroLoginLeitor('Senha incorreta. Verifique com a administração.');
+    }
+  }
+
   async function handleLogout() {
-    await supabase.auth.signOut();
+    if (perfilAcesso === 'admin') {
+      await supabase.auth.signOut();
+    }
+    setUsuarioAdmin(null);
+    setPerfilAcesso('leitor');
+    setAutenticado(false);
+    setSenhaLeitor('');
   }
 
   async function handleExcluirSetor(setor) {
@@ -102,7 +142,6 @@ export default function App() {
     }
   }
 
-  // Criar Novo Aviso
   async function handleSalvarAviso(e) {
     e.preventDefault();
     if (!novoAvisoTitulo.trim()) return alert('Informe o título do aviso.');
@@ -176,106 +215,138 @@ export default function App() {
     return bateuBusca && bateuSetor;
   });
 
-  if (telaAtual === 'login') {
-    return <Login onVoltar={() => setTelaAtual('portal')} onLoginSucesso={() => setTelaAtual('portal')} />;
+  // TELA DE LOGIN DE ADMINISTRADOR
+  if (telaLoginAdmin) {
+    return (
+      <Login 
+        onVoltar={() => setTelaLoginAdmin(false)} 
+        onLoginSucesso={() => {
+          setTelaLoginAdmin(false);
+          setAutenticado(true);
+          setPerfilAcesso('admin');
+        }} 
+      />
+    );
   }
 
+  // TELA DE BLOQUEIO / USUÁRIO GERAL (EXIGE SENHA PARA VISUALIZAR)
+  if (!autenticado) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 relative font-sans">
+        <div 
+          className="fixed inset-0 pointer-events-none opacity-5 bg-center bg-no-repeat bg-contain"
+          style={{ backgroundImage: `url('/brasao.png')` }}
+        />
+        
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full z-10 border border-gray-200 text-center">
+          <div className="bg-[#8B265E]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8 text-[#8B265E]" />
+          </div>
+
+          <h2 className="text-xl font-bold text-gray-900 mb-1">Portal de Documentos</h2>
+          <p className="text-xs text-gray-500 mb-6">Secretaria Municipal de Saúde - Jarinu</p>
+
+          <form onSubmit={handleLoginLeitor} className="space-y-4 text-left">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                <Key className="w-3.5 h-3.5 text-[#8B265E]" /> Senha de Acesso Geral
+              </label>
+              <input
+                type="password"
+                required
+                placeholder="Digite a senha de acesso..."
+                value={senhaLeitor}
+                onChange={(e) => setSenhaLeitor(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-[#8B265E]"
+              />
+            </div>
+
+            {erroLoginLeitor && (
+              <p className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">{erroLoginLeitor}</p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full bg-[#8B265E] hover:bg-[#6D1E4A] text-white font-semibold py-2.5 rounded-lg text-sm shadow transition"
+            >
+              Acessar Documentos
+            </button>
+          </form>
+
+          <div className="mt-6 pt-4 border-t border-gray-100">
+            <button
+              onClick={() => setTelaLoginAdmin(true)}
+              className="text-xs text-[#8B265E] hover:underline font-semibold flex items-center justify-center gap-1 mx-auto"
+            >
+              <ShieldCheck className="w-4 h-4" /> Entrar como Administrador
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isAdmin = perfilAcesso === 'admin';
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans relative overflow-x-hidden w-full">
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans relative overflow-x-hidden">
       
       {/* MARCA D'ÁGUA DE FUNDO */}
       <div 
         className="fixed inset-0 pointer-events-none z-0 bg-center bg-no-repeat bg-contain opacity-[0.03]"
-        style={{ backgroundImage: `url('/brasao.png')`, backgroundPosition: 'center', backgroundSize: '300px' }}
+        style={{ backgroundImage: `url('/brasao.png')`, backgroundPosition: '60% center', backgroundSize: '450px' }}
       />
 
-      {/* CABEÇALHO RESPONSIVO */}
-      <header className="bg-[#8B265E] text-white p-3 md:p-4 shadow-md flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 z-10 border-b-2 border-[#A855F7]/30">
-        <div className="flex items-center space-x-3 sm:space-x-4">
-          <div className="bg-white/95 p-1.5 rounded-lg shadow-sm flex items-center justify-center shrink-0">
+      {/* CABEÇALHO */}
+      <header className="bg-[#8B265E] text-white p-4 shadow-md flex justify-between items-center z-10 border-b-2 border-[#A855F7]/30">
+        <div className="flex items-center space-x-4">
+          <div className="bg-white/95 p-1.5 rounded-lg shadow-sm flex items-center justify-center">
             <img 
               src="/brasao.png" 
               alt="Brasão Secretaria de Saúde" 
-              className="h-8 sm:h-10 w-auto object-contain"
+              className="h-10 w-auto object-contain"
             />
           </div>
           <div>
-            <h1 className="text-sm sm:text-lg font-bold tracking-tight leading-tight">SECRETARIA MUNICIPAL DE SAÚDE</h1>
-            <p className="text-[10px] sm:text-xs text-[#E9D5FF] font-medium tracking-wide">PREFEITURA MUNICIPAL DE JARINU</p>
+            <h1 className="text-lg font-bold tracking-tight leading-tight">SECRETARIA MUNICIPAL DE SAÚDE</h1>
+            <p className="text-xs text-[#E9D5FF] font-medium tracking-wide">PREFEITURA MUNICIPAL DE JARINU</p>
           </div>
         </div>
 
-        <div className="self-end sm:self-auto">
-          {usuario ? (
-            <div className="flex items-center gap-2 sm:gap-3">
-              <span className="text-[11px] sm:text-xs bg-black/20 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full border border-white/10 text-white/90 truncate max-w-[150px] sm:max-w-none">
-                {usuario.email}
-              </span>
-              <button 
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 bg-[#521637] hover:bg-[#3B1028] text-white px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium transition border border-white/10 shadow-sm"
-              >
-                <LogOut className="w-3.5 h-3.5" /> Sair
-              </button>
-            </div>
+        <div className="flex items-center gap-3">
+          {isAdmin ? (
+            <span className="text-xs bg-black/20 px-3 py-1.5 rounded-full border border-white/10 text-white/90 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-green-400" /> Admin: {usuarioAdmin?.email || 'Administrador'}
+            </span>
           ) : (
-            <button 
-              onClick={() => setTelaAtual('login')}
-              className="flex items-center gap-1.5 sm:gap-2 bg-[#6D1E4A] hover:bg-[#521637] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition border border-white/10"
+            <span className="text-xs bg-white/10 px-3 py-1.5 rounded-full text-white/90 flex items-center gap-1.5 border border-white/10">
+              <UserCheck className="w-3.5 h-3.5 text-pink-300" /> Usuário Geral (Leitura)
+            </span>
+          )}
+
+          {!isAdmin && (
+            <button
+              onClick={() => setTelaLoginAdmin(true)}
+              className="text-xs bg-[#6D1E4A] hover:bg-[#521637] text-white px-3 py-1.5 rounded-lg font-semibold border border-white/10 transition"
             >
-              <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Área Restrita
+              Área Admin
             </button>
           )}
+
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 bg-[#521637] hover:bg-[#3B1028] text-white px-3 py-1.5 rounded-lg text-xs font-medium transition border border-white/10 shadow-sm"
+            title="Sair do sistema"
+          >
+            <LogOut className="w-3.5 h-3.5" /> Sair
+          </button>
         </div>
       </header>
 
-      {/* SELETOR DE NAVEGAÇÃO EXCLUSIVO PARA CELULAR */}
-      <div className="block md:hidden bg-white border-b border-gray-200 p-3 z-10">
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          <button
-            onClick={() => { setAbaAtiva('avisos'); setSetorSelecionado(null); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 border ${
-              abaAtiva === 'avisos' 
-                ? 'bg-[#8B265E] text-white border-[#8B265E]' 
-                : 'bg-pink-50 text-[#8B265E] border-pink-100'
-            }`}
-          >
-            <Megaphone className="w-3.5 h-3.5" /> Avisos ({avisos.length})
-          </button>
-
-          <button
-            onClick={() => { setAbaAtiva('documentos'); setSetorSelecionado(null); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 border ${
-              abaAtiva === 'documentos' && !setorSelecionado
-                ? 'bg-[#8B265E] text-white border-[#8B265E]' 
-                : 'bg-gray-100 text-gray-700 border-gray-200'
-            }`}
-          >
-            <Folder className="w-3.5 h-3.5" /> Todos os Docs
-          </button>
-
-          {/* Seleção de Temas no Celular */}
-          <select
-            value={setorSelecionado || ''}
-            onChange={(e) => {
-              setAbaAtiva('documentos');
-              setSetorSelecionado(e.target.value ? Number(e.target.value) : null);
-            }}
-            className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-gray-50 border border-gray-300 text-gray-700 outline-none"
-          >
-            <option value="">Filtrar por Tema...</option>
-            {setores.map(s => (
-              <option key={s.id} value={s.id}>{s.parent_id ? `↳ ${s.nome}` : s.nome}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="flex flex-1 z-10 min-w-0">
-        {/* SIDEBAR (DESKTOP) */}
-        <aside className="w-80 bg-white/90 backdrop-blur-sm border-r border-gray-200 p-4 hidden md:flex md:flex-col justify-between flex-shrink-0">
+      <div className="flex flex-1 z-10">
+        {/* SIDEBAR */}
+        <aside className="w-80 bg-white/90 backdrop-blur-sm border-r border-gray-200 p-4 flex flex-col justify-between flex-shrink-0">
           <div>
-            
             {/* BOTÃO PAINEL DE AVISOS */}
             <button
               onClick={() => { setAbaAtiva('avisos'); setSetorSelecionado(null); }}
@@ -300,7 +371,7 @@ export default function App() {
 
             <div className="flex justify-between items-center mb-2 pt-2 border-t border-gray-100">
               <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Temas Principais</h2>
-              {usuario && (
+              {isAdmin && (
                 <button 
                   onClick={() => setModalSetorAberto(true)}
                   className="text-xs bg-[#FCE7F3] text-[#8B265E] hover:bg-[#8B265E] hover:text-white p-1.5 rounded-md flex items-center gap-1 font-semibold transition duration-200"
@@ -354,7 +425,7 @@ export default function App() {
                       </button>
 
                       <div className="flex items-center pr-1">
-                        {usuario && (
+                        {isAdmin && (
                           <div className="hidden group-hover:flex items-center gap-0.5 mr-1">
                             <button 
                               onClick={(e) => { e.stopPropagation(); setSetorParaEditar(tema); }} 
@@ -405,7 +476,7 @@ export default function App() {
                                 <span className="truncate">{sub.nome}</span>
                               </button>
 
-                              {usuario && (
+                              {isAdmin && (
                                 <div className="hidden group-hover:flex items-center gap-0.5 pr-2">
                                   <button 
                                     onClick={(e) => { e.stopPropagation(); setSetorParaEditar(sub); }} 
@@ -450,24 +521,24 @@ export default function App() {
           </div>
         </aside>
 
-        {/* CONTEÚDO PRINCIPAL COM LARGURA DINÂMICA */}
-        <main className="flex-1 p-3 sm:p-6 min-w-0">
+        {/* CONTEÚDO PRINCIPAL */}
+        <main className="flex-1 p-6">
           
           {/* TELA DE AVISOS */}
           {abaAtiva === 'avisos' ? (
             <div>
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+              <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h2 className="text-lg sm:text-xl font-bold text-gray-800 flex items-center gap-2">
-                    <Megaphone className="w-5 h-5 sm:w-6 sm:h-6 text-[#8B265E]" /> Painel de Avisos & Comunicados
+                  <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <Megaphone className="w-6 h-6 text-[#8B265E]" /> Painel de Avisos & Comunicados
                   </h2>
-                  <p className="text-xs text-gray-500">Informativos oficiais da Secretaria Municipal de Saúde (Clique para ampliar)</p>
+                  <p className="text-xs text-gray-500">Informativos oficiais da Secretaria Municipal de Saúde (Clique no aviso para ampliar)</p>
                 </div>
 
-                {usuario && (
+                {isAdmin && (
                   <button
                     onClick={() => setModalAvisoAberto(true)}
-                    className="w-full sm:w-auto bg-[#8B265E] hover:bg-[#6D1E4A] text-white font-medium px-4 py-2 rounded-lg text-xs sm:text-sm flex items-center justify-center gap-2 shadow transition"
+                    className="bg-[#8B265E] hover:bg-[#6D1E4A] text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-2 shadow transition"
                   >
                     <Plus className="w-4 h-4" /> Publicar Novo Aviso
                   </button>
@@ -475,19 +546,28 @@ export default function App() {
               </div>
 
               {avisos.length === 0 ? (
-                <div className="bg-white/80 rounded-xl p-8 sm:p-12 text-center border border-gray-200 shadow-sm">
-                  <Megaphone className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 mx-auto mb-3" />
+                <div className="bg-white/80 rounded-xl p-12 text-center border border-gray-200 shadow-sm">
+                  <Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500 font-medium text-sm">Nenhum comunicado publicado até o momento.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                /* GRID ESTILIZADO DIRETO VIA CSS INLINE (GARANTE CARDS LADO A LADO) */
+                <div 
+                  style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', 
+                    gap: '1.5rem',
+                    width: '100%' 
+                  }}
+                >
                   {avisos.map((aviso) => (
                     <div 
                       key={aviso.id} 
                       onClick={() => setAvisoAmpliado(aviso)}
                       className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden flex flex-col justify-between hover:shadow-xl transition-all duration-300 relative group cursor-pointer hover:-translate-y-1"
+                      style={{ height: '360px' }}
                     >
-                      {usuario && (
+                      {isAdmin && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -500,40 +580,42 @@ export default function App() {
                         </button>
                       )}
 
-                      <div>
+                      <div className="flex-1 flex flex-col overflow-hidden">
                         {aviso.imagem_url ? (
-                          <div className="bg-gray-100 border-b border-gray-100 overflow-hidden max-h-80 flex items-center justify-center relative">
+                          <div className="bg-gray-100 border-b border-gray-100 overflow-hidden h-44 w-full flex items-center justify-center relative shrink-0">
                             <img 
                               src={aviso.imagem_url} 
                               alt={aviso.titulo} 
-                              className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-300"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <span className="bg-white/90 text-gray-800 text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
-                                <Maximize2 className="w-3.5 h-3.5 text-[#8B265E]" /> Ampliar
+                                <Maximize2 className="w-3.5 h-3.5 text-[#8B265E]" /> Clique para ampliar
                               </span>
                             </div>
                           </div>
                         ) : (
-                          <div className="bg-[#FCE7F3] p-6 text-center border-b border-pink-100">
-                            <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10 text-[#8B265E] mx-auto mb-1" />
-                            <span className="text-xs font-bold text-[#8B265E] uppercase tracking-wider">Comunicado Oficial</span>
+                          <div className="bg-[#FCE7F3] p-4 text-center border-b border-pink-100 shrink-0">
+                            <AlertTriangle className="w-8 h-8 text-[#8B265E] mx-auto mb-1" />
+                            <span className="text-[10px] font-bold text-[#8B265E] uppercase tracking-wider">Comunicado Oficial</span>
                           </div>
                         )}
 
-                        <div className="p-4 sm:p-5">
-                          <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
-                            <Calendar className="w-3.5 h-3.5" />
-                            <span>{new Date(aviso.created_at).toLocaleDateString('pt-BR')}</span>
+                        <div className="p-4 flex-1 flex flex-col justify-between overflow-hidden">
+                          <div>
+                            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                              <Calendar className="w-3.5 h-3.5" />
+                              <span>{new Date(aviso.created_at).toLocaleDateString('pt-BR')}</span>
+                            </div>
+                            <h3 className="font-bold text-gray-900 text-sm mb-1 leading-snug group-hover:text-[#8B265E] transition-colors line-clamp-2">{aviso.titulo}</h3>
+                            {aviso.descricao && (
+                              <p className="text-xs text-gray-600 whitespace-pre-line leading-relaxed line-clamp-2">{aviso.descricao}</p>
+                            )}
                           </div>
-                          <h3 className="font-bold text-gray-900 text-base sm:text-lg mb-2 leading-snug group-hover:text-[#8B265E] transition-colors">{aviso.titulo}</h3>
-                          {aviso.descricao && (
-                            <p className="text-xs text-gray-600 whitespace-pre-line leading-relaxed line-clamp-3">{aviso.descricao}</p>
-                          )}
                         </div>
                       </div>
 
-                      <div className="p-3 sm:p-4 bg-gray-50/50 border-t border-gray-100 flex justify-between items-center text-xs text-gray-400 font-semibold">
+                      <div className="p-3 bg-gray-50/50 border-t border-gray-100 flex justify-between items-center text-xs text-gray-400 font-semibold shrink-0">
                         <span className="uppercase text-[10px]">Secretaria de Saúde</span>
                         <span className="text-[#8B265E] flex items-center gap-1 text-[11px] group-hover:underline">
                           Ver detalhes <ChevronRight className="w-3.5 h-3.5" />
@@ -548,37 +630,37 @@ export default function App() {
             
             /* TELA DE DOCUMENTOS */
             <>
-              <div className="flex flex-col sm:flex-row gap-3 mb-4 sm:mb-6 justify-between items-stretch sm:items-center">
-                <div className="relative w-full sm:w-80 md:w-96">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+              <div className="flex flex-col md:flex-row gap-4 mb-6 justify-between items-center">
+                <div className="relative w-full md:w-96">
+                  <Search className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
                   <input
                     type="text"
                     placeholder="Buscar documento ou palavra-chave..."
                     value={busca}
                     onChange={(e) => setBusca(e.target.value)}
-                    className="w-full pl-9 sm:pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B265E] text-xs sm:text-sm outline-none bg-white/80"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B265E] text-sm outline-none bg-white/80"
                   />
                 </div>
 
-                {usuario && (
+                {isAdmin && (
                   <button
                     onClick={() => setModalDocAberto(true)}
-                    className="w-full sm:w-auto bg-[#8B265E] hover:bg-[#6D1E4A] text-white font-medium px-4 py-2 rounded-lg text-xs sm:text-sm flex items-center justify-center gap-2 shadow transition"
+                    className="w-full md:w-auto bg-[#8B265E] hover:bg-[#6D1E4A] text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center justify-center gap-2 shadow transition"
                   >
                     <Plus className="w-4 h-4" /> Enviar Novo Documento
                   </button>
                 )}
               </div>
 
-              {/* TABELA DE DOCUMENTOS COM ROLAGEM LATERAL */}
-              <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow border border-gray-200 overflow-x-auto w-full">
-                <table className="w-full min-w-[600px] divide-y divide-gray-200">
+              {/* TABELA DE DOCUMENTOS */}
+              <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow border border-gray-200 overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Documento</th>
-                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                      <th className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Documento</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white/60 divide-y divide-gray-200">
@@ -591,47 +673,47 @@ export default function App() {
                     ) : (
                       documentosFiltrados.map((doc) => (
                         <tr key={doc.id} className="hover:bg-gray-50/80 transition">
-                          <td className="px-4 sm:px-6 py-4">
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center">
                               <FileText className="w-5 h-5 text-[#8B265E] mr-3 shrink-0" />
-                              <div className="min-w-0">
-                                <div className="text-xs sm:text-sm font-semibold text-gray-900 break-words">{doc.titulo}</div>
-                                <div className="text-[11px] sm:text-xs text-gray-500 break-words">{doc.descricao}</div>
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">{doc.titulo}</div>
+                                <div className="text-xs text-gray-500">{doc.descricao}</div>
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                          <td className="px-6 py-4 whitespace-nowrap">
                             {doc.is_atualizado && (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#F3E8FF] text-[#6B21A8] gap-1 border border-[#E9D5FF]">
                                 <Bell className="w-3 h-3 text-[#8B265E]" /> Atualizado
                               </span>
                             )}
                           </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {new Date(doc.created_at).toLocaleDateString('pt-BR')}
                           </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-xs sm:text-sm font-medium">
-                            <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <div className="flex items-center justify-end gap-2">
                               <a
                                 href={doc.arquivo_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-[#8B265E] hover:text-white hover:bg-[#8B265E] inline-flex items-center gap-1 font-semibold text-xs bg-[#FCE7F3] px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md transition duration-200"
+                                className="text-[#8B265E] hover:text-white hover:bg-[#8B265E] inline-flex items-center gap-1 font-semibold text-xs bg-[#FCE7F3] px-2.5 py-1.5 rounded-md transition duration-200"
                                 title="Visualizar documento em nova aba"
                               >
-                                <Eye className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Visualizar</span>
+                                <Eye className="w-3.5 h-3.5" /> Visualizar
                               </a>
 
                               <a
                                 href={doc.arquivo_url}
                                 download
-                                className="text-gray-600 hover:text-gray-900 inline-flex items-center gap-1 font-semibold text-xs border border-gray-200 hover:bg-gray-100 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md transition duration-200"
+                                className="text-gray-600 hover:text-gray-900 inline-flex items-center gap-1 font-semibold text-xs border border-gray-200 hover:bg-gray-100 px-2.5 py-1.5 rounded-md transition duration-200"
                                 title="Baixar arquivo"
                               >
-                                <Download className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Baixar</span>
+                                <Download className="w-3.5 h-3.5" /> Baixar
                               </a>
 
-                              {usuario && (
+                              {isAdmin && (
                                 <button
                                   onClick={() => handleExcluirDocumento(doc)}
                                   className="text-gray-400 hover:text-[#8B265E] p-1.5 rounded-md hover:bg-[#FCE7F3] transition"
@@ -657,7 +739,7 @@ export default function App() {
       {/* MODAL DE VISUALIZAÇÃO AMPLIADA DO AVISO */}
       {avisoAmpliado && (
         <div 
-          className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-6 animate-fadeIn"
+          className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2 md:p-6 animate-fadeIn"
           onClick={() => setAvisoAmpliado(null)}
         >
           <div 
@@ -669,7 +751,7 @@ export default function App() {
               className="absolute top-3 right-3 bg-black/80 text-white hover:bg-black p-2 rounded-full z-20 transition shadow-xl border border-white/20"
               title="Fechar"
             >
-              <X className="w-5 h-5 sm:w-6 sm:h-6" />
+              <X className="w-6 h-6" />
             </button>
 
             <div className="flex-1 overflow-y-auto bg-gray-950 p-2 flex flex-col items-center">
@@ -687,16 +769,16 @@ export default function App() {
               )}
             </div>
 
-            <div className="p-4 sm:p-5 bg-white border-t border-gray-100 flex-shrink-0">
+            <div className="p-4 md:p-5 bg-white border-t border-gray-100 flex-shrink-0">
               <div className="flex justify-between items-center mb-1">
                 <div className="flex items-center gap-2 text-xs text-gray-400 font-medium">
                   <Calendar className="w-4 h-4 text-[#8B265E]" />
                   <span>Publicado em {new Date(avisoAmpliado.created_at).toLocaleDateString('pt-BR')}</span>
                 </div>
-                <span className="text-[10px] sm:text-[11px] text-gray-400 uppercase font-semibold">Secretaria de Saúde</span>
+                <span className="text-[11px] text-gray-400 uppercase font-semibold">Secretaria de Saúde</span>
               </div>
 
-              <h2 className="text-base sm:text-xl font-bold text-gray-900">{avisoAmpliado.titulo}</h2>
+              <h2 className="text-lg md:text-xl font-bold text-gray-900">{avisoAmpliado.titulo}</h2>
 
               {avisoAmpliado.descricao && (
                 <p className="mt-2 text-xs text-gray-600 whitespace-pre-line leading-relaxed max-h-24 overflow-y-auto bg-gray-50 p-2.5 rounded-lg border border-gray-100">
@@ -711,8 +793,8 @@ export default function App() {
       {/* MODAL DE PUBLICAR AVISO */}
       {modalAvisoAberto && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 sm:p-6 relative max-h-[90vh] overflow-y-auto">
-            <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 relative">
+            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <Megaphone className="w-5 h-5 text-[#8B265E]" /> Publicar Novo Aviso
             </h3>
 
@@ -725,7 +807,7 @@ export default function App() {
                   placeholder="Ex: INSTABILIDADE NA INTERNET"
                   value={novoAvisoTitulo}
                   onChange={(e) => setNovoAvisoTitulo(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-2 text-xs sm:text-sm outline-none focus:ring-2 focus:ring-[#8B265E]"
+                  className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-[#8B265E]"
                 />
               </div>
 
@@ -736,7 +818,7 @@ export default function App() {
                   placeholder="Informe orientações aos servidores ou munícipes..."
                   value={novoAvisoDesc}
                   onChange={(e) => setNovoAvisoDesc(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-2 text-xs sm:text-sm outline-none focus:ring-2 focus:ring-[#8B265E]"
+                  className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-[#8B265E]"
                 />
               </div>
 
