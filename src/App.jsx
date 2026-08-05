@@ -94,7 +94,7 @@ export default function App() {
   // Validação do Login do Usuário Geral (Leitura)
   function handleLoginLeitor(e) {
     e.preventDefault();
-    const SENHA_CORRETA_LEITOR = "saude2026"; // Altere aqui a senha padrão se desejar
+    const SENHA_CORRETA_LEITOR = "SAude_@2026"; // Altere aqui a senha padrão se desejar
 
     if (senhaLeitor === SENHA_CORRETA_LEITOR) {
       setAutenticado(true);
